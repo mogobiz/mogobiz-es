@@ -23,12 +23,12 @@ object EsClient {
     var dateCreated: Date
   }
 
-  def index[T <: Timestamped : Manifest](t: T, refresh: Boolean = true): String = {
+  def index[T <: Timestamped : Manifest](indexName:String, t: T, refresh: Boolean = true): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
     val json = JacksonConverter.serialize(t)
-    val res = client.client.prepareIndex(Settings.ElasticSearch.Index, manifest[T].runtimeClass.getSimpleName, t.uuid)
+    val res = client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, t.uuid)
       .setSource(json)
       .setRefresh(refresh)
       .execute()
@@ -36,30 +36,30 @@ object EsClient {
     res.getId
   }
 
-  def load[T: Manifest](uuid: String): Option[T] = {
-    val req = get id uuid from Settings.ElasticSearch.Index -> manifest[T].runtimeClass.getSimpleName
+  def load[T: Manifest](indexName:String, uuid: String): Option[T] = {
+    val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
     val res = client.sync.execute(req)
     if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
   }
 
-  def loadWithVersion[T: Manifest](uuid: String): Option[(T, Long)] = {
-    val req = get id uuid from Settings.ElasticSearch.Index -> manifest[T].runtimeClass.getSimpleName
+  def loadWithVersion[T: Manifest](indexName:String, uuid: String): Option[(T, Long)] = {
+    val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
     val res = client.sync.execute(req)
     val maybeT = if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
     maybeT map ((_, res.getVersion))
   }
 
-  def delete[T: Manifest](uuid: String, refresh: Boolean): Boolean = {
-    val req = com.sksamuel.elastic4s.ElasticDsl.delete id uuid from Settings.ElasticSearch.Index -> manifest[T].runtimeClass.getSimpleName refresh refresh
+  def delete[T: Manifest](indexName:String, uuid: String, refresh: Boolean): Boolean = {
+    val req = com.sksamuel.elastic4s.ElasticDsl.delete id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
     val res = client.sync.execute(req)
     res.isFound
   }
 
-  def update[T <: Timestamped : Manifest](t: T, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped : Manifest](indexName:String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
-    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in Settings.ElasticSearch.Index -> manifest[T].runtimeClass.getSimpleName refresh refresh doc new DocumentSource {
+    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh doc new DocumentSource {
       override def json: String = js
     }
     req.docAsUpsert(upsert)
@@ -67,11 +67,11 @@ object EsClient {
     res.isCreated || res.getVersion > 1
   }
 
-  def update[T <: Timestamped : Manifest](t: T, version: Long): Boolean = {
+  def update[T <: Timestamped : Manifest](indexName:String, t: T, version: Long): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
-    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in Settings.ElasticSearch.Index -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
+    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
       override def json: String = js
     }
     val res = client.sync.execute(req)
