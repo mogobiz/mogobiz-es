@@ -3,7 +3,7 @@ package com.mogobiz.es
 import com.typesafe.config.ConfigFactory
 
 object Settings {
-  private val config = ConfigFactory.load("elasticsearch")
+  private val config = ConfigFactory.load("elasticsearch").withFallback(ConfigFactory.load("default-elasticsearch"))
 
   object ElasticSearch {
     val DateFormat = config.getString("elasticsearch.date.format")
