@@ -23,7 +23,7 @@ object EsClient {
     var dateCreated: Date
   }
 
-  def index[T <: Timestamped : Manifest](indexName:String, t: T, refresh: Boolean = true): String = {
+  def index[T <: Timestamped : Manifest](indexName:String, t: T, refresh: Boolean): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
