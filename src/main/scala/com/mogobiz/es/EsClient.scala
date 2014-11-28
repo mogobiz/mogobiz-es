@@ -7,7 +7,8 @@ import com.sksamuel.elastic4s.ElasticClient
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.elasticsearch.common.settings.ImmutableSettings
-import org.elasticsearch.search.SearchHit
+import org.elasticsearch.index.get.GetResult
+import org.elasticsearch.search.{SearchHits, SearchHit}
 
 object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
@@ -55,6 +56,11 @@ object EsClient {
     res.isFound
   }
 
+  def updateRaw(req:UpdateDefinition) : GetResult = {
+    EsClient().execute(req).getGetResult
+  }
+
+
   def update[T <: Timestamped : Manifest](indexName:String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
@@ -91,9 +97,9 @@ object EsClient {
       Some(JacksonConverter.deserialize[T](res.getHits.getHits()(0).getSourceAsString))
   }
 
-  def searchAllRaw(req: SearchDefinition): Array[SearchHit] = {
+  def searchAllRaw(req: SearchDefinition): SearchHits = {
     val res = EsClient().execute(req)
-    res.getHits.getHits
+    res.getHits
   }
 
   def searchRaw(req: SearchDefinition): Option[SearchHit] = {
