@@ -37,7 +37,11 @@ object EsClient {
   }
 
   def load[T: Manifest](indexName:String, uuid: String): Option[T] = {
-    val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
+    load[T](indexName, uuid, manifest[T].runtimeClass.getSimpleName)
+  }
+
+  def load[T: Manifest](indexName:String, uuid: String, esDocumentName:String): Option[T] = {
+    val req = get id uuid from indexName -> esDocumentName
     val res = client.sync.execute(req)
     if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
   }
@@ -56,10 +60,14 @@ object EsClient {
   }
 
   def update[T <: Timestamped : Manifest](indexName:String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
+    update[T](indexName, t, manifest[T].runtimeClass.getSimpleName, upsert, refresh)
+  }
+
+  def update[T <: Timestamped : Manifest](indexName:String, t: T, esDocumentName:String, upsert: Boolean, refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
-    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh doc new DocumentSource {
+    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> esDocumentName refresh refresh doc new DocumentSource {
       override def json: String = js
     }
     req.docAsUpsert(upsert)
