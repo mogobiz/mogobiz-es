@@ -3,12 +3,17 @@ package com.mogobiz.es
 import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
-import com.sksamuel.elastic4s.ElasticClient
-import com.sksamuel.elastic4s.ElasticDsl._
+import com.sksamuel.elastic4s.{MultiGetDefinition, GetDefinition, ElasticClient}
+import com.sksamuel.elastic4s.ElasticDsl.{delete => esdelete4s, index => esindex4s, update => esupdate4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
+import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
+import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.settings.ImmutableSettings
+import org.elasticsearch.common.xcontent.{ToXContent, XContentFactory}
 import org.elasticsearch.index.get.GetResult
 import org.elasticsearch.search.{SearchHits, SearchHit}
+import org.json4s.JsonAST.{JArray, JValue}
+import org.json4s.native.JsonMethods._
 
 object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
@@ -24,7 +29,17 @@ object EsClient {
     var dateCreated: Date
   }
 
-  def index[T <: Timestamped : Manifest](indexName:String, t: T, refresh: Boolean): String = {
+
+  def index[T: Manifest](store: String, t: T): String = {
+    val js = JacksonConverter.serialize(t)
+    val req = esindex4s into(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
+      override val json: String = js
+    }
+    val res = EsClient().execute(req)
+    res.getId
+  }
+
+  def index[T <: Timestamped : Manifest](indexName:String, t: T, refresh: Boolean = false): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
@@ -54,6 +69,15 @@ object EsClient {
     maybeT map ((_, res.getVersion))
   }
 
+  def loadRaw(req:GetDefinition): Option[GetResponse] = {
+    val res = EsClient().execute(req)
+    if (res.isExists) Some(res) else None
+  }
+
+  def loadRaw(req:MultiGetDefinition): Array[MultiGetItemResponse] = {
+    EsClient().execute(req).getResponses
+  }
+
   def delete[T: Manifest](indexName:String, uuid: String, refresh: Boolean): Boolean = {
     val req = com.sksamuel.elastic4s.ElasticDsl.delete id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
     val res = client.sync.execute(req)
@@ -63,7 +87,6 @@ object EsClient {
   def updateRaw(req:UpdateDefinition) : GetResult = {
     EsClient().execute(req).getGetResult
   }
-
 
   def update[T <: Timestamped : Manifest](indexName:String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
     update[T](indexName, t, manifest[T].runtimeClass.getSimpleName, upsert, refresh)
@@ -122,4 +145,28 @@ object EsClient {
     val rt = manifest[T].runtimeClass
     rt.getSimpleName
   }
+
+  def multiSearchRaw(req: List[SearchDefinition]): Array[Option[SearchHits]] = {
+    //req.foreach(debug)
+    val multiSearchResponse:MultiSearchResponse = EsClient().execute(req:_*)
+    for(resp <- multiSearchResponse.getResponses) yield {
+      if(resp.isFailure)
+        None
+      else
+        Some(resp.getResponse.getHits)
+    }
+  }
+
+  /**
+   * send back the aggregations results
+   * @param req
+   * @return
+   */
+  def searchAgg(req: SearchDefinition) : JValue = {
+    //debug(req)
+    val res = EsClient().execute(req)
+    val resJson = parse(res.toString)
+    resJson \ "aggregations"
+  }
+
 }
