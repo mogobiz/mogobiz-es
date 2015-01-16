@@ -4,15 +4,14 @@ import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s.{MultiGetDefinition, GetDefinition, ElasticClient}
-import com.sksamuel.elastic4s.ElasticDsl.{delete => esdelete4s, index => esindex4s, update => esupdate4s, _}
+import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
 import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.settings.ImmutableSettings
-import org.elasticsearch.common.xcontent.{ToXContent, XContentFactory}
 import org.elasticsearch.index.get.GetResult
 import org.elasticsearch.search.{SearchHits, SearchHit}
-import org.json4s.JsonAST.{JArray, JValue}
+import org.json4s.JsonAST.JValue
 import org.json4s.native.JsonMethods._
 
 object EsClient {
@@ -116,11 +115,13 @@ object EsClient {
   }
 
   def searchAll[T: Manifest](req: SearchDefinition): Seq[T] = {
+    debug(req)
     val res = EsClient().execute(req)
     res.getHits.getHits.map { hit => JacksonConverter.deserialize[T](hit.getSourceAsString)}
   }
 
   def search[T: Manifest](req: SearchDefinition): Option[T] = {
+    debug(req)
     val res = EsClient().execute(req)
     if (res.getHits.getTotalHits == 0)
       None
@@ -129,11 +130,13 @@ object EsClient {
   }
 
   def searchAllRaw(req: SearchDefinition): SearchHits = {
+    debug(req)
     val res = EsClient().execute(req)
     res.getHits
   }
 
   def searchRaw(req: SearchDefinition): Option[SearchHit] = {
+    debug(req)
     val res = EsClient().execute(req)
     if (res.getHits.getTotalHits == 0)
       None
@@ -147,7 +150,7 @@ object EsClient {
   }
 
   def multiSearchRaw(req: List[SearchDefinition]): Array[Option[SearchHits]] = {
-    //req.foreach(debug)
+    req.foreach(debug)
     val multiSearchResponse:MultiSearchResponse = EsClient().execute(req:_*)
     for(resp <- multiSearchResponse.getResponses) yield {
       if(resp.isFailure)
@@ -163,10 +166,21 @@ object EsClient {
    * @return
    */
   def searchAgg(req: SearchDefinition) : JValue = {
-    //debug(req)
+    debug(req)
     val res = EsClient().execute(req)
     val resJson = parse(res.toString)
     resJson \ "aggregations"
   }
 
+  import Settings._
+  import com.typesafe.scalalogging.slf4j.Logger
+  import org.slf4j.LoggerFactory
+
+  private val logger = Logger(LoggerFactory.getLogger("esClient"))
+
+  private def debug(req: SearchDefinition) {
+    if (ElasticSearch.EsDebug) {
+      logger.info(req._builder.toString)
+    }
+  }
 }

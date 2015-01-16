@@ -12,6 +12,7 @@ object Settings {
     val Port = config.getInt("elasticsearch.port")
     val Cluster = config.getString("elasticsearch.cluster")
     val FullUrl = s"$Host:$HttpPort"
+    val EsDebug = config.getBoolean("elasticsearch.debug")
     println("ElascticSearch on " + Host + ":" + Port + ", cluster->" + Cluster)
   }
 
