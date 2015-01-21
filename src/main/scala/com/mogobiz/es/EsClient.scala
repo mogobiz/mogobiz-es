@@ -12,6 +12,7 @@ import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.index.get.GetResult
 import org.elasticsearch.search.{SearchHits, SearchHit}
 import org.json4s.JsonAST.JValue
+import org.json4s._
 import org.json4s.native.JsonMethods._
 
 object EsClient {
@@ -158,6 +159,24 @@ object EsClient {
       else
         Some(resp.getResponse.getHits)
     }
+  }
+
+  def multiSearchAgg(req: List[SearchDefinition]): JValue = {
+    req.foreach(debug)
+    val multiSearchResponse:MultiSearchResponse = EsClient().execute(req:_*)
+    val esResult = for(resp <- multiSearchResponse.getResponses) yield {
+      if(resp.isFailure) None
+      else {
+        val resJson = parse(resp.getResponse.toString)
+        Some(resJson \ "aggregations")
+      }
+    }
+    join(esResult.toList.flatten)
+  }
+
+  private def join(list: List[JValue]): JValue = {
+    if (list.isEmpty) JNothing
+    else list.head merge join(list.tail)
   }
 
   /**
