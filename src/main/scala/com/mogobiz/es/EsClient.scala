@@ -111,7 +111,7 @@ object EsClient {
     val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
       override def json: String = js
     }
-    val res = client.sync.execute(req)
+    client.sync.execute(req)
     true
   }
 
