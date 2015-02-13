@@ -4,7 +4,7 @@ import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s.{MultiGetDefinition, GetDefinition, ElasticClient}
-import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, _}
+import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
 import org.elasticsearch.action.search.MultiSearchResponse
@@ -79,7 +79,7 @@ object EsClient {
   }
 
   def delete[T: Manifest](indexName:String, uuid: String, refresh: Boolean): Boolean = {
-    val req = com.sksamuel.elastic4s.ElasticDsl.delete id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
+    val req = esdelete4s id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
     val res = client.sync.execute(req)
     res.isFound
   }
@@ -96,7 +96,7 @@ object EsClient {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
-    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> esDocumentName refresh refresh doc new DocumentSource {
+    val req = esupdate4s id t.uuid in indexName -> esDocumentName refresh refresh doc new DocumentSource {
       override def json: String = js
     }
     req.docAsUpsert(upsert)
@@ -108,7 +108,7 @@ object EsClient {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
-    val req = com.sksamuel.elastic4s.ElasticDsl.update id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
+    val req = esupdate4s id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
       override def json: String = js
     }
     client.sync.execute(req)
@@ -181,7 +181,7 @@ object EsClient {
 
   /**
    * send back the aggregations results
-   * @param req
+   * @param req - request
    * @return
    */
   def searchAgg(req: SearchDefinition) : JValue = {

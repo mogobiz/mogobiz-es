@@ -1,6 +1,8 @@
 package com.mogobiz.es
 
 import com.typesafe.config.ConfigFactory
+import com.typesafe.scalalogging.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 object Settings {
   private val config = ConfigFactory.load("elasticsearch").withFallback(ConfigFactory.load("default-elasticsearch"))
@@ -13,7 +15,8 @@ object Settings {
     val Cluster = config.getString("elasticsearch.cluster")
     val FullUrl = s"$Host:$HttpPort"
     val EsDebug = config.getBoolean("elasticsearch.debug")
-    println("ElascticSearch on " + Host + ":" + Port + ", cluster->" + Cluster)
+    private val logger = Logger(LoggerFactory.getLogger("esSettings"))
+    logger.info(s"ElascticSearch on $Host:$Port, cluster->$Cluster")
   }
 
 }
