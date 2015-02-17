@@ -14,6 +14,7 @@ import org.elasticsearch.search.{SearchHits, SearchHit}
 import org.json4s.JsonAST.JValue
 import org.json4s._
 import org.json4s.native.JsonMethods._
+import org.slf4j.LoggerFactory
 
 object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
@@ -193,7 +194,6 @@ object EsClient {
 
   import Settings._
   import com.typesafe.scalalogging.slf4j.Logger
-  import org.slf4j.LoggerFactory
 
   private val logger = Logger(LoggerFactory.getLogger("esClient"))
 
