@@ -3,9 +3,10 @@ package com.mogobiz.es
 import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
-import com.sksamuel.elastic4s.{MultiGetDefinition, GetDefinition, ElasticClient}
-import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, _}
+import com.sksamuel.elastic4s.{BulkCompatibleDefinition, MultiGetDefinition, GetDefinition, ElasticClient}
+import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
+import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
 import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.settings.ImmutableSettings
@@ -87,6 +88,12 @@ object EsClient {
 
   def updateRaw(req:UpdateDefinition) : GetResult = {
     EsClient().execute(req).getGetResult
+  }
+
+  def bulk(requests: Seq[BulkCompatibleDefinition]) : BulkResponse = {
+    val req = esbulk4s(requests:_*)
+    val res = client.sync.execute(req)
+    res
   }
 
   def update[T <: Timestamped : Manifest](indexName:String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
