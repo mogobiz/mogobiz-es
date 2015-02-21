@@ -92,7 +92,7 @@ object EsClient {
 
   def bulk(requests: Seq[BulkCompatibleDefinition]) : BulkResponse = {
     val req = esbulk4s(requests:_*)
-    val res = client.sync.execute(req)
+    val res = EsClient().execute(req)
     res
   }
 
