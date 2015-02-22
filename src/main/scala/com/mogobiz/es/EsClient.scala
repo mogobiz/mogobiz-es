@@ -212,7 +212,7 @@ object EsClient {
 
   import akka.stream.scaladsl._
 
-  def bulkBalancedFlow(bulkSize: Int = 100, balanceSize: Int = 2) = Flow(){implicit b =>
+  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) = Flow(){implicit b =>
     import FlowGraphImplicits._
 
     val in = UndefinedSource[BulkCompatibleDefinition]

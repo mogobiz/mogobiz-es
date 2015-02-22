@@ -15,6 +15,7 @@ object Settings {
     val Cluster = config.getString("elasticsearch.cluster")
     val FullUrl = s"$Host:$HttpPort"
     val EsDebug = config.getBoolean("elasticsearch.debug")
+    val bulkSize = config.getInt("elasticsearch.bulkSize")
     private val logger = Logger(LoggerFactory.getLogger("esSettings"))
     logger.info(s"ElascticSearch on $Host:$Port, cluster->$Cluster")
   }
