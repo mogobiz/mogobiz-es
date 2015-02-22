@@ -209,4 +209,34 @@ object EsClient {
       logger.info(req._builder.toString)
     }
   }
+
+  import akka.stream.scaladsl._
+
+  def bulkBalancedFlow(bulkSize: Int = 100, balanceSize: Int = 2) = Flow(){implicit b =>
+    import FlowGraphImplicits._
+
+    val in = UndefinedSource[BulkCompatibleDefinition]
+    val grouped = Flow[BulkCompatibleDefinition].grouped(bulkSize)
+    val bulkFlow = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
+    val out = UndefinedSink[BulkResponse]
+
+    if(balanceSize > 1){
+
+      val balance = Balance[Seq[BulkCompatibleDefinition]]
+      val merge = Merge[BulkResponse]
+
+      in ~> grouped ~> balance
+      1 to balanceSize foreach { _ =>
+        balance ~> bulkFlow ~> merge
+      }
+      merge ~> out
+
+    }
+    else{
+      in ~> grouped ~> bulkFlow ~> out
+    }
+
+    (in, out)
+  }
+
 }
