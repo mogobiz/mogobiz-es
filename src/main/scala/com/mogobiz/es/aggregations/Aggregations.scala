@@ -27,10 +27,8 @@ with CreateIndexDsl
 with DeleteIndexDsl
 with DeleteDsl
 with ExplainDsl
-with FacetDsl
 with AggregationDsl
 with GetDsl
-with IndexStatusDsl
 with MappingDsl
 with MoreLikeThisDsl
 with MultiGetDsl
