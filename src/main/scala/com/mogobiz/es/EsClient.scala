@@ -212,31 +212,32 @@ object EsClient {
 
   import akka.stream.scaladsl._
 
-  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) = Flow(){implicit b =>
-    import FlowGraphImplicits._
+  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) =
+    Flow(){implicit b =>
+      import FlowGraphImplicits._
 
-    val in = UndefinedSource[BulkCompatibleDefinition]
-    val grouped = Flow[BulkCompatibleDefinition].grouped(bulkSize)
-    val bulkFlow = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
-    val out = UndefinedSink[BulkResponse]
+      val in = UndefinedSource[BulkCompatibleDefinition]
+      val group = Flow[BulkCompatibleDefinition].grouped(bulkSize)
+      val bulkUpsert = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
+      val out = UndefinedSink[BulkResponse]
 
-    if(balanceSize > 1){
+      if(balanceSize > 1){
 
-      val balance = Balance[Seq[BulkCompatibleDefinition]]
-      val merge = Merge[BulkResponse]
+        val balance = Balance[Seq[BulkCompatibleDefinition]]
+        val merge = Merge[BulkResponse]
 
-      in ~> grouped ~> balance
-      1 to balanceSize foreach { _ =>
-        balance ~> bulkFlow ~> merge
+        in ~> group ~> balance
+        1 to balanceSize foreach { _ =>
+          balance ~> bulkUpsert ~> merge
+        }
+        merge ~> out
+
       }
-      merge ~> out
+      else{
+        in ~> group ~> bulkUpsert ~> out
+      }
 
+      (in, out)
     }
-    else{
-      in ~> grouped ~> bulkFlow ~> out
-    }
-
-    (in, out)
-  }
 
 }
