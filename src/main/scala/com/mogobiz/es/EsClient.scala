@@ -3,7 +3,7 @@ package com.mogobiz.es
 import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
-import com.sksamuel.elastic4s.{BulkCompatibleDefinition, MultiGetDefinition, GetDefinition, ElasticClient}
+import com.sksamuel.elastic4s._
 import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.elasticsearch.action.bulk.BulkResponse
@@ -17,12 +17,14 @@ import org.json4s._
 import org.json4s.native.JsonMethods._
 import org.slf4j.LoggerFactory
 
+import scala.concurrent.Future
+
 object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
-  val client = ElasticClient.remote(settings, (Settings.ElasticSearch.Host, Settings.ElasticSearch.Port))
+  private val client = ElasticClient.remote(settings, (Settings.ElasticSearch.Host, Settings.ElasticSearch.Port))
 
-  def apply() = {
-    client.sync
+  def apply(): ElasticClient = {
+    client
   }
 
   type Timestamped = {
@@ -37,7 +39,7 @@ object EsClient {
     val req = esindex4s into(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
       override val json: String = js
     }
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     res.getId
   }
 
@@ -60,39 +62,39 @@ object EsClient {
 
   def load[T: Manifest](indexName:String, uuid: String, esDocumentName:String): Option[T] = {
     val req = get id uuid from indexName -> esDocumentName
-    val res = client.sync.execute(req)
+    val res = client.execute(req).await
     if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
   }
 
   def loadWithVersion[T: Manifest](indexName:String, uuid: String): Option[(T, Long)] = {
     val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
-    val res = client.sync.execute(req)
+    val res = client.execute(req).await
     val maybeT = if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
     maybeT map ((_, res.getVersion))
   }
 
   def loadRaw(req:GetDefinition): Option[GetResponse] = {
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     if (res.isExists) Some(res) else None
   }
 
   def loadRaw(req:MultiGetDefinition): Array[MultiGetItemResponse] = {
-    EsClient().execute(req).getResponses
+    EsClient().execute(req).await.getResponses
   }
 
   def delete[T: Manifest](indexName:String, uuid: String, refresh: Boolean): Boolean = {
     val req = esdelete4s id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
-    val res = client.sync.execute(req)
+    val res = client.execute(req).await
     res.isFound
   }
 
   def updateRaw(req:UpdateDefinition) : GetResult = {
-    EsClient().execute(req).getGetResult
+    EsClient().execute(req).await.getGetResult
   }
 
   def bulk(requests: Seq[BulkCompatibleDefinition]) : BulkResponse = {
     val req = esbulk4s(requests:_*)
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     res
   }
 
@@ -108,7 +110,7 @@ object EsClient {
       override def json: String = js
     }
     req.docAsUpsert(upsert)
-    val res = client.sync.execute(req)
+    val res = client.execute(req).await
     res.isCreated || res.getVersion > 1
   }
 
@@ -119,19 +121,19 @@ object EsClient {
     val req = esupdate4s id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
       override def json: String = js
     }
-    client.sync.execute(req)
+    client.execute(req).await
     true
   }
 
   def searchAll[T: Manifest](req: SearchDefinition): Seq[T] = {
     debug(req)
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     res.getHits.getHits.map { hit => JacksonConverter.deserialize[T](hit.getSourceAsString)}
   }
 
   def search[T: Manifest](req: SearchDefinition): Option[T] = {
     debug(req)
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     if (res.getHits.getTotalHits == 0)
       None
     else
@@ -140,13 +142,13 @@ object EsClient {
 
   def searchAllRaw(req: SearchDefinition): SearchHits = {
     debug(req)
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     res.getHits
   }
 
   def searchRaw(req: SearchDefinition): Option[SearchHit] = {
     debug(req)
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     if (res.getHits.getTotalHits == 0)
       None
     else
@@ -160,7 +162,7 @@ object EsClient {
 
   def multiSearchRaw(req: List[SearchDefinition]): Array[Option[SearchHits]] = {
     req.foreach(debug)
-    val multiSearchResponse:MultiSearchResponse = EsClient().execute(req:_*)
+    val multiSearchResponse:MultiSearchResponse = EsClient().execute(multi(req:_*)).await
     for(resp <- multiSearchResponse.getResponses) yield {
       if(resp.isFailure)
         None
@@ -171,7 +173,7 @@ object EsClient {
 
   def multiSearchAgg(req: List[SearchDefinition]): JValue = {
     req.foreach(debug)
-    val multiSearchResponse:MultiSearchResponse = EsClient().execute(req:_*)
+    val multiSearchResponse:MultiSearchResponse = EsClient().execute(multi(req:_*)).await
     val esResult = for(resp <- multiSearchResponse.getResponses) yield {
       if(resp.isFailure) None
       else {
