@@ -90,6 +90,10 @@ object EsClient {
     EsClient().execute(req).getGetResult
   }
 
+  def deleteRaw(req:DeleteByIdDefinition) : Unit = {
+    EsClient().execute(req)
+  }
+
   def bulk(requests: Seq[BulkCompatibleDefinition]) : BulkResponse = {
     val req = esbulk4s(requests:_*)
     val res = EsClient().execute(req)
