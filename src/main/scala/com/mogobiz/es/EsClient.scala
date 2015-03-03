@@ -200,7 +200,7 @@ object EsClient {
    */
   def searchAgg(req: SearchDefinition) : JValue = {
     debug(req)
-    val res = EsClient().execute(req)
+    val res = EsClient().execute(req).await
     val resJson = parse(res.toString)
     resJson \ "aggregations"
   }
