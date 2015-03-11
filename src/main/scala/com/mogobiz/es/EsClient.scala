@@ -6,9 +6,11 @@ import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s._
 import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
+import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequest
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
 import org.elasticsearch.action.search.MultiSearchResponse
+import org.elasticsearch.common.collect.UnmodifiableIterator
 import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.index.get.GetResult
 import org.elasticsearch.search.{SearchHits, SearchHit}
@@ -16,8 +18,6 @@ import org.json4s.JsonAST.JValue
 import org.json4s._
 import org.json4s.native.JsonMethods._
 import org.slf4j.LoggerFactory
-
-import scala.concurrent.Future
 
 object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
@@ -33,6 +33,16 @@ object EsClient {
     var dateCreated: Date
   }
 
+  def getIndexByAlias(alias: String) : List[String] = {
+    val aliases = EsClient().admin.indices().getAliases(new GetAliasesRequest(alias)).get().getAliases
+    def extractListAlias(iterator: UnmodifiableIterator[String]) : List[String] = {
+      if (!iterator.hasNext) Nil
+      else {
+        iterator.next() :: extractListAlias(iterator)
+      }
+    }
+    extractListAlias(aliases.keysIt())
+  }
 
   def index[T: Manifest](store: String, t: T): String = {
     val js = JacksonConverter.serialize(t)
