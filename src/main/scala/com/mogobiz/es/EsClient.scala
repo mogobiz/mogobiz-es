@@ -1,11 +1,13 @@
 package com.mogobiz.es
 
+import java.util.regex.Pattern
 import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s._
 import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequest
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
@@ -18,6 +20,7 @@ import org.json4s.JsonAST.JValue
 import org.json4s._
 import org.json4s.native.JsonMethods._
 import org.slf4j.LoggerFactory
+import scala.collection.JavaConversions._
 
 object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
@@ -33,9 +36,24 @@ object EsClient {
     var dateCreated: Date
   }
 
-  def getIndexByAlias(alias: String) : List[String] = {
+  def listIndices(pattern: String = null): Set[String] = {
+    val clusterHealthRequest = new ClusterHealthRequest()
+    val clusterHealthResponse = EsClient.client.admin.cluster().health(clusterHealthRequest).get()
+
+    val matcher = Option(pattern).map(Pattern.compile)
+
+    clusterHealthResponse.getIndices.keySet() flatMap {
+      indice =>
+        if (matcher.map(_.matcher(indice).matches()).getOrElse(false))
+          Some(indice)
+        else
+          None
+    } toSet
+  }
+
+  def getIndexByAlias(alias: String): List[String] = {
     val aliases = EsClient().admin.indices().getAliases(new GetAliasesRequest(alias)).get().getAliases
-    def extractListAlias(iterator: UnmodifiableIterator[String]) : List[String] = {
+    def extractListAlias(iterator: UnmodifiableIterator[String]): List[String] = {
       if (!iterator.hasNext) Nil
       else {
         iterator.next() :: extractListAlias(iterator)
@@ -53,7 +71,7 @@ object EsClient {
     res.getId
   }
 
-  def index[T <: Timestamped : Manifest](indexName:String, t: T, refresh: Boolean = false): String = {
+  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean = false): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
@@ -66,57 +84,57 @@ object EsClient {
     res.getId
   }
 
-  def load[T: Manifest](indexName:String, uuid: String): Option[T] = {
+  def load[T: Manifest](indexName: String, uuid: String): Option[T] = {
     load[T](indexName, uuid, manifest[T].runtimeClass.getSimpleName)
   }
 
-  def load[T: Manifest](indexName:String, uuid: String, esDocumentName:String): Option[T] = {
+  def load[T: Manifest](indexName: String, uuid: String, esDocumentName: String): Option[T] = {
     val req = get id uuid from indexName -> esDocumentName
     val res = client.execute(req).await
     if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
   }
 
-  def loadWithVersion[T: Manifest](indexName:String, uuid: String): Option[(T, Long)] = {
+  def loadWithVersion[T: Manifest](indexName: String, uuid: String): Option[(T, Long)] = {
     val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
     val res = client.execute(req).await
     val maybeT = if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
     maybeT map ((_, res.getVersion))
   }
 
-  def loadRaw(req:GetDefinition): Option[GetResponse] = {
+  def loadRaw(req: GetDefinition): Option[GetResponse] = {
     val res = EsClient().execute(req).await
     if (res.isExists) Some(res) else None
   }
 
-  def loadRaw(req:MultiGetDefinition): Array[MultiGetItemResponse] = {
+  def loadRaw(req: MultiGetDefinition): Array[MultiGetItemResponse] = {
     EsClient().execute(req).await.getResponses
   }
 
-  def delete[T: Manifest](indexName:String, uuid: String, refresh: Boolean): Boolean = {
+  def delete[T: Manifest](indexName: String, uuid: String, refresh: Boolean): Boolean = {
     val req = esdelete4s id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
     val res = client.execute(req).await
     res.isFound
   }
 
-  def updateRaw(req:UpdateDefinition) : GetResult = {
+  def updateRaw(req: UpdateDefinition): GetResult = {
     EsClient().execute(req).await.getGetResult
   }
 
-  def deleteRaw(req:DeleteByIdDefinition) : Unit = {
+  def deleteRaw(req: DeleteByIdDefinition): Unit = {
     EsClient().execute(req)
   }
 
-  def bulk(requests: Seq[BulkCompatibleDefinition]) : BulkResponse = {
-    val req = esbulk4s(requests:_*)
+  def bulk(requests: Seq[BulkCompatibleDefinition]): BulkResponse = {
+    val req = esbulk4s(requests: _*)
     val res = EsClient().execute(req).await
     res
   }
 
-  def update[T <: Timestamped : Manifest](indexName:String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped : Manifest](indexName: String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
     update[T](indexName, t, manifest[T].runtimeClass.getSimpleName, upsert, refresh)
   }
 
-  def update[T <: Timestamped : Manifest](indexName:String, t: T, esDocumentName:String, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped : Manifest](indexName: String, t: T, esDocumentName: String, upsert: Boolean, refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
@@ -128,7 +146,7 @@ object EsClient {
     res.isCreated || res.getVersion > 1
   }
 
-  def update[T <: Timestamped : Manifest](indexName:String, t: T, version: Long): Boolean = {
+  def update[T <: Timestamped : Manifest](indexName: String, t: T, version: Long): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
@@ -142,7 +160,7 @@ object EsClient {
   def searchAll[T: Manifest](req: SearchDefinition): Seq[T] = {
     debug(req)
     val res = EsClient().execute(req).await
-    res.getHits.getHits.map { hit => JacksonConverter.deserialize[T](hit.getSourceAsString)}
+    res.getHits.getHits.map { hit => JacksonConverter.deserialize[T](hit.getSourceAsString) }
   }
 
   def search[T: Manifest](req: SearchDefinition): Option[T] = {
@@ -176,9 +194,9 @@ object EsClient {
 
   def multiSearchRaw(req: List[SearchDefinition]): Array[Option[SearchHits]] = {
     req.foreach(debug)
-    val multiSearchResponse:MultiSearchResponse = EsClient().execute(multi(req:_*)).await
-    for(resp <- multiSearchResponse.getResponses) yield {
-      if(resp.isFailure)
+    val multiSearchResponse: MultiSearchResponse = EsClient().execute(multi(req: _*)).await
+    for (resp <- multiSearchResponse.getResponses) yield {
+      if (resp.isFailure)
         None
       else
         Some(resp.getResponse.getHits)
@@ -187,9 +205,9 @@ object EsClient {
 
   def multiSearchAgg(req: List[SearchDefinition]): JValue = {
     req.foreach(debug)
-    val multiSearchResponse:MultiSearchResponse = EsClient().execute(multi(req:_*)).await
-    val esResult = for(resp <- multiSearchResponse.getResponses) yield {
-      if(resp.isFailure) None
+    val multiSearchResponse: MultiSearchResponse = EsClient().execute(multi(req: _*)).await
+    val esResult = for (resp <- multiSearchResponse.getResponses) yield {
+      if (resp.isFailure) None
       else {
         val resJson = parse(resp.getResponse.toString)
         Some(resJson \ "aggregations")
@@ -208,7 +226,7 @@ object EsClient {
    * @param req - request
    * @return
    */
-  def searchAgg(req: SearchDefinition) : JValue = {
+  def searchAgg(req: SearchDefinition): JValue = {
     debug(req)
     val res = EsClient().execute(req).await
     val resJson = parse(res.toString)
@@ -229,7 +247,7 @@ object EsClient {
   import akka.stream.scaladsl._
 
   def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) =
-    Flow(){implicit b =>
+    Flow() { implicit b =>
       import FlowGraphImplicits._
 
       val in = UndefinedSource[BulkCompatibleDefinition]
@@ -237,7 +255,7 @@ object EsClient {
       val bulkUpsert = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
       val out = UndefinedSink[BulkResponse]
 
-      if(balanceSize > 1){
+      if (balanceSize > 1) {
 
         val balance = Balance[Seq[BulkCompatibleDefinition]]
         val merge = Merge[BulkResponse]
@@ -249,7 +267,7 @@ object EsClient {
         merge ~> out
 
       }
-      else{
+      else {
         in ~> group ~> bulkUpsert ~> out
       }
 
