@@ -62,7 +62,7 @@ object EsClient {
     extractListAlias(aliases.keysIt())
   }
 
-  def index[T: Manifest](store: String, t: T): String = {
+  def indexLowercase[T: Manifest](store: String, t: T): String = {
     val js = JacksonConverter.serialize(t)
     val req = esindex4s into(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
       override val json: String = js
@@ -71,7 +71,7 @@ object EsClient {
     res.getId
   }
 
-  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean = false): String = {
+  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
