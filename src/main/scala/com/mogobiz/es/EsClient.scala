@@ -210,6 +210,13 @@ object EsClient {
       if (resp.isFailure) None
       else {
         val resJson = parse(resp.getResponse.toString)
+        println("****************************************")
+        println("****************************************")
+        println("****************************************")
+        println(resp.getResponse.toString)
+        println("****************************************")
+        println("****************************************")
+        println("****************************************")
         Some(resJson \ "aggregations")
       }
     }
