@@ -75,12 +75,12 @@ object EsClient {
     res.getId
   }
 
-  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean): String = {
+  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean, id:Option[String] = None): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
     val json = JacksonConverter.serialize(t)
-    val res = client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, t.uuid)
+    val res = client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id.getOrElse(t.uuid))
       .setSource(json)
       .setRefresh(refresh)
       .execute()
