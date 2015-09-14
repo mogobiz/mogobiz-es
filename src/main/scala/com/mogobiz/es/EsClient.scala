@@ -66,11 +66,11 @@ object EsClient {
     extractListAlias(aliases.keysIt())
   }
 
-  def indexLowercase[T: Manifest](store: String, t: T): String = {
+  def indexLowercase[T: Manifest](store: String, t: T, refresh: Boolean = false): String = {
     val js = JacksonConverter.serialize(t)
     val req = esindex4s into(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
       override val json: String = js
-    }
+    } refresh refresh
     val res = EsClient().execute(req).await
     res.getId
   }
