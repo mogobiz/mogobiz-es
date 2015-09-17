@@ -66,6 +66,13 @@ object EsClient {
     extractListAlias(aliases.keysIt())
   }
 
+  def getUniqueIndexByAlias(alias: String): Option[String] = {
+    val aliases = EsClient().admin.indices().getAliases(new GetAliasesRequest(alias)).get().getAliases
+    val iterator = aliases.keysIt();
+    if (iterator.hasNext) Some(iterator.next())
+    else None
+  }
+
   def indexLowercase[T: Manifest](store: String, t: T, refresh: Boolean = false): String = {
     val js = JacksonConverter.serialize(t)
     val req = esindex4s into(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
