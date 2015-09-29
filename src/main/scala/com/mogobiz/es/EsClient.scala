@@ -5,7 +5,7 @@
 package com.mogobiz.es
 
 import java.util.regex.Pattern
-import java.util.{Calendar, Date}
+import java.util.{Map, Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s._
@@ -19,7 +19,7 @@ import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.collect.UnmodifiableIterator
 import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.index.get.GetResult
-import org.elasticsearch.search.{SearchHits, SearchHit}
+import org.elasticsearch.search.{SearchHitField, SearchHits, SearchHit}
 import org.json4s.JsonAST.JValue
 import org.json4s._
 import org.json4s.native.JsonMethods._
@@ -168,10 +168,13 @@ object EsClient {
     true
   }
 
-  def searchAll[T: Manifest](req: SearchDefinition): Seq[T] = {
+  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize : (T, Map[String, SearchHitField]) => T = {(hit : T, fields : Map[String, SearchHitField]) => hit}): Seq[T] = {
     debug(req)
     val res = EsClient().execute(req).await
-    res.getHits.getHits.map { hit => JacksonConverter.deserialize[T](hit.getSourceAsString) }
+    res.getHits.getHits.map { hit => {
+      fieldsDeserialize(JacksonConverter.deserialize[T](hit.getSourceAsString), hit.fields())
+    }
+    }
   }
 
   def search[T: Manifest](req: SearchDefinition): Option[T] = {
