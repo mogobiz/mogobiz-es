@@ -30,6 +30,8 @@ object EsClient {
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
   private val client = ElasticClient.remote(settings, (Settings.ElasticSearch.Host, Settings.ElasticSearch.Port))
 
+  val MAX_SIZE = (Integer.MAX_VALUE / 2)
+
   def apply(): ElasticClient = {
     client
   }
