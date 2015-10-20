@@ -82,7 +82,7 @@ object EsClient {
     res.getId
   }
 
-  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean, id:Option[String] = None): String = {
+  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean, id: Option[String] = None): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
@@ -168,7 +168,7 @@ object EsClient {
     true
   }
 
-  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize : (T, Map[String, SearchHitField]) => T = {(hit : T, fields : Map[String, SearchHitField]) => hit}): Seq[T] = {
+  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, Map[String, SearchHitField]) => T = { (hit: T, fields: Map[String, SearchHitField]) => hit }): Seq[T] = {
     debug(req)
     val res = EsClient().execute(req).await
     res.getHits.getHits.map { hit => {
@@ -236,10 +236,10 @@ object EsClient {
   }
 
   /**
-   * send back the aggregations results
-   * @param req - request
-   * @return
-   */
+    * send back the aggregations results
+    * @param req - request
+    * @return
+    */
   def searchAgg(req: SearchDefinition): JValue = {
     debug(req)
     val res = EsClient().execute(req).await
