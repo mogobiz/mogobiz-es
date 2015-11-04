@@ -25,10 +25,13 @@ import org.json4s._
 import org.json4s.native.JsonMethods._
 import org.slf4j.LoggerFactory
 import scala.collection.JavaConversions._
+import scala.concurrent.duration.Duration
 
 object EsClient {
+  implicit val _ = Duration.Inf
+
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
-  private val client = ElasticClient.remote(settings, (Settings.ElasticSearch.Host, Settings.ElasticSearch.Port))
+  private val client: ElasticClient = ElasticClient.remote(settings, (Settings.ElasticSearch.Host, Settings.ElasticSearch.Port))
 
   val MAX_SIZE = (Integer.MAX_VALUE / 2)
 
@@ -95,6 +98,12 @@ object EsClient {
       .execute()
       .actionGet()
     res.getId
+  }
+
+  def exists(indexes: String*): Boolean = {
+    client.execute {
+      indexExists(indexes)
+    }.await.isExists
   }
 
   def load[T: Manifest](indexName: String, uuid: String): Option[T] = {
@@ -289,5 +298,4 @@ object EsClient {
 
       (in, out)
     }
-
 }
