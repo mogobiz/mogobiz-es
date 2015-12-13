@@ -12,7 +12,6 @@ import org.json4s.JsonAST.{JArray, JValue}
 import org.json4s.native.JsonMethods._
 
 /**
- * Created by yoannbaudy on 05/03/2015.
  */
 package object es {
 
