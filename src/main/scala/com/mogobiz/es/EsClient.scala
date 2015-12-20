@@ -5,21 +5,21 @@
 package com.mogobiz.es
 
 import java.util.regex.Pattern
-import java.util.{Map, Calendar, Date}
+import java.util.{ Map, Calendar, Date }
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s._
-import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
+import com.sksamuel.elastic4s.ElasticDsl.{ index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _ }
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequest
 import org.elasticsearch.action.bulk.BulkResponse
-import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
+import org.elasticsearch.action.get.{ MultiGetItemResponse, GetResponse }
 import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.collect.UnmodifiableIterator
 import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.index.get.GetResult
-import org.elasticsearch.search.{SearchHitField, SearchHits, SearchHit}
+import org.elasticsearch.search.{ SearchHitField, SearchHits, SearchHit }
 import org.json4s.JsonAST.JValue
 import org.json4s._
 import org.json4s.native.JsonMethods._
@@ -80,14 +80,14 @@ object EsClient {
 
   def indexLowercase[T: Manifest](store: String, t: T, refresh: Boolean = false): String = {
     val js = JacksonConverter.serialize(t)
-    val req = esindex4s into(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
+    val req = esindex4s into (store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
       override val json: String = js
     } refresh refresh
     val res = EsClient().execute(req).await
     res.getId
   }
 
-  def index[T <: Timestamped : Manifest](indexName: String, t: T, refresh: Boolean, id: Option[String] = None): String = {
+  def index[T <: Timestamped: Manifest](indexName: String, t: T, refresh: Boolean, id: Option[String] = None): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
@@ -152,11 +152,11 @@ object EsClient {
     res
   }
 
-  def update[T <: Timestamped : Manifest](indexName: String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped: Manifest](indexName: String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
     update[T](indexName, t, manifest[T].runtimeClass.getSimpleName, upsert, refresh)
   }
 
-  def update[T <: Timestamped : Manifest](indexName: String, t: T, esDocumentName: String, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped: Manifest](indexName: String, t: T, esDocumentName: String, upsert: Boolean, refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
@@ -168,7 +168,7 @@ object EsClient {
     res.isCreated || res.getVersion > 1
   }
 
-  def update[T <: Timestamped : Manifest](indexName: String, t: T, version: Long): Boolean = {
+  def update[T <: Timestamped: Manifest](indexName: String, t: T, version: Long): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
@@ -182,9 +182,10 @@ object EsClient {
   def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, Map[String, SearchHitField]) => T = { (hit: T, fields: Map[String, SearchHitField]) => hit }): Seq[T] = {
     debug(req)
     val res = EsClient().execute(req).await
-    res.getHits.getHits.map { hit => {
-      fieldsDeserialize(JacksonConverter.deserialize[T](hit.getSourceAsString), hit.fields())
-    }
+    res.getHits.getHits.map { hit =>
+      {
+        fieldsDeserialize(JacksonConverter.deserialize[T](hit.getSourceAsString), hit.fields())
+      }
     }
   }
 
@@ -247,10 +248,10 @@ object EsClient {
   }
 
   /**
-    * send back the aggregations results
-    * @param req - request
-    * @return
-    */
+   * send back the aggregations results
+   * @param req - request
+   * @return
+   */
   def searchAgg(req: SearchDefinition): JValue = {
     debug(req)
     val res = EsClient().execute(req).await
@@ -291,8 +292,7 @@ object EsClient {
         }
         merge ~> out
 
-      }
-      else {
+      } else {
         in ~> group ~> bulkUpsert ~> out
       }
 
