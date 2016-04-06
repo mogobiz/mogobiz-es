@@ -23,7 +23,7 @@ import org.elasticsearch.index.get.GetResult
 import org.elasticsearch.search.{ SearchHitField, SearchHits, SearchHit }
 import org.json4s.JsonAST.JValue
 import org.json4s._
-import org.json4s.native.JsonMethods._
+import org.json4s.jackson.JsonMethods._
 import org.slf4j.LoggerFactory
 import scala.collection.JavaConversions._
 import scala.concurrent.duration.Duration

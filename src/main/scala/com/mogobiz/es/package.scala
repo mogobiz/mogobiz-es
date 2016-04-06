@@ -9,7 +9,7 @@ import org.elasticsearch.action.get.{ MultiGetItemResponse, GetResponse }
 import org.elasticsearch.common.xcontent.{ ToXContent, XContentFactory }
 import org.elasticsearch.search.{ SearchHit, SearchHits }
 import org.json4s.JsonAST.{ JArray, JValue }
-import org.json4s.native.JsonMethods._
+import org.json4s.jackson.JsonMethods._
 
 /**
  */
