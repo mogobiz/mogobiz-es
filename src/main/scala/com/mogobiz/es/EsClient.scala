@@ -4,8 +4,9 @@
 
 package com.mogobiz.es
 
+import java.util
 import java.util.regex.Pattern
-import java.util.{ Map, Calendar, Date }
+import java.util.{ Calendar, Date }
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s._
@@ -22,18 +23,20 @@ import org.elasticsearch.index.get.GetResult
 import org.elasticsearch.search.{ SearchHitField, SearchHits, SearchHit }
 import org.json4s.JsonAST.JValue
 import org.json4s._
-import org.json4s.native.JsonMethods._
+import org.json4s.jackson.JsonMethods._
 import org.slf4j.LoggerFactory
 import scala.collection.JavaConversions._
 import scala.concurrent.duration.Duration
 
+import Settings.ElasticSearch._
+
 object EsClient {
   implicit val _ = Duration.Inf
 
-  val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Settings.ElasticSearch.Cluster).build()
-  private val client: ElasticClient = ElasticClient.remote(settings, (Settings.ElasticSearch.Host, Settings.ElasticSearch.Port))
+  val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Cluster).build()
+  private val client: ElasticClient = ElasticClient.remote(settings, ElasticsearchClientUri(s"elasticsearch://$Host:$Port"))
 
-  val MAX_SIZE = (Integer.MAX_VALUE / 2)
+  val MAX_SIZE = Integer.MAX_VALUE / 2
 
   def apply(): ElasticClient = {
     client
@@ -53,7 +56,7 @@ object EsClient {
 
     clusterHealthResponse.getIndices.keySet() flatMap {
       indice =>
-        if (matcher.map(_.matcher(indice).matches()).getOrElse(false))
+        if (matcher.exists(_.matcher(indice).matches()))
           Some(indice)
         else
           None
@@ -73,7 +76,7 @@ object EsClient {
 
   def getUniqueIndexByAlias(alias: String): Option[String] = {
     val aliases = EsClient().admin.indices().getAliases(new GetAliasesRequest(alias)).get().getAliases
-    val iterator = aliases.keysIt();
+    val iterator = aliases.keysIt()
     if (iterator.hasNext) Some(iterator.next())
     else None
   }
@@ -179,7 +182,7 @@ object EsClient {
     true
   }
 
-  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, Map[String, SearchHitField]) => T = { (hit: T, fields: Map[String, SearchHitField]) => hit }): Seq[T] = {
+  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, util.Map[String, SearchHitField]) => T = { (hit: T, fields: util.Map[String, SearchHitField]) => hit }): Seq[T] = {
     debug(req)
     val res = EsClient().execute(req).await
     res.getHits.getHits.map { hit =>
@@ -249,7 +252,8 @@ object EsClient {
 
   /**
    * send back the aggregations results
-   * @param req - request
+    *
+    * @param req - request
    * @return
    */
   def searchAgg(req: SearchDefinition): JValue = {
