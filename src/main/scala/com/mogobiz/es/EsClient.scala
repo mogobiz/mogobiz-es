@@ -252,8 +252,8 @@ object EsClient {
 
   /**
    * send back the aggregations results
-    *
-    * @param req - request
+   *
+   * @param req - request
    * @return
    */
   def searchAgg(req: SearchDefinition): JValue = {
