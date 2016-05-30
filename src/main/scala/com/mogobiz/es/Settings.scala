@@ -5,9 +5,11 @@
 package com.mogobiz.es
 
 import com.typesafe.config.ConfigFactory
-import com.typesafe.scalalogging.LazyLogging
+import com.typesafe.scalalogging.slf4j.Logger
+import org.slf4j.LoggerFactory
 
-object Settings extends LazyLogging {
+object Settings {
+  val logger = Logger(LoggerFactory.getLogger("com.mogobiz.es.ElasticSearch"))
   private val config = ConfigFactory.load("elasticsearch").withFallback(ConfigFactory.load("default-elasticsearch"))
 
   object ElasticSearch {
