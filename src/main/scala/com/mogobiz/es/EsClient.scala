@@ -264,7 +264,7 @@ object EsClient {
   }
 
   import Settings._
-  import com.typesafe.scalalogging.slf4j.Logger
+  import com.typesafe.scalalogging.Logger
 
   private val logger = Logger(LoggerFactory.getLogger("esClient"))
 
