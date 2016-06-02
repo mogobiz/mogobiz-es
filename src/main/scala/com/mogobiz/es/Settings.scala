@@ -22,6 +22,10 @@ object Settings {
     val EsDebug = config.getBoolean("elasticsearch.debug")
     val bulkSize = config.getInt("elasticsearch.bulkSize")
     logger.info(s"ElascticSearch on $Host:$Port, cluster->$Cluster")
+    object Searchguard{
+      val Username = config getString "elasticsearch.searchguard.username"
+      val Password = config getString "elasticsearch.searchguard.password"
+    }
   }
 
 }
