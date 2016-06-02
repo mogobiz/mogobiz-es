@@ -23,6 +23,7 @@ object Settings {
     val bulkSize = config.getInt("elasticsearch.bulkSize")
     logger.info(s"ElascticSearch on $Host:$Port, cluster->$Cluster")
     object Searchguard{
+      val Active = config getBoolean "elasticsearch.searchguard.active"
       val Username = config getString "elasticsearch.searchguard.username"
       val Password = config getString "elasticsearch.searchguard.password"
     }
