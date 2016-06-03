@@ -45,13 +45,13 @@ object EsClient {
     client
   }
 
-  private def secureActionRequest[T <: ActionRequestBuilder](request: T): T = {
+  def secureActionRequest[T <: ActionRequestBuilder](request: T): T = {
     if(Active)
       request.putHeader("searchguard_transport_creds", credentials)
     request
   }
 
-  private def secureRequest[T <: {def build: BulkRequest}](request: T): T = {
+  def secureRequest[T <: {def build: BulkRequest}](request: T): T = {
     if(Active)
       request.build.putHeader("searchguard_transport_creds", credentials)
     request
