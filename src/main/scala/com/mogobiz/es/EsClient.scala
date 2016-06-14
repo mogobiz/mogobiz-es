@@ -30,6 +30,7 @@ import Settings.ElasticSearch._
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
 
 object EsClient {
+
   import com.mogobiz.json.Implicits._
 
   implicit val _ = Duration.Inf
@@ -82,8 +83,7 @@ object EsClient {
     else None
   }
 
-  def indexLowercase[T: Manifest](store: String, t: T, refresh: Boolean = false): String = {
-
+  def indexLowercase[T <: AnyRef: Manifest](store: String, t: T, refresh: Boolean = false): String = {
     val js = serialization.write[T](t)
     val req = esindex4s into (store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
       override val json: String = js
@@ -111,17 +111,17 @@ object EsClient {
     }.await.isExists
   }
 
-  def load[T: Manifest](indexName: String, uuid: String): Option[T] = {
+  def load[T <: AnyRef: Manifest](indexName: String, uuid: String): Option[T] = {
     load[T](indexName, uuid, manifest[T].runtimeClass.getSimpleName)
   }
 
-  def load[T: Manifest](indexName: String, uuid: String, esDocumentName: String): Option[T] = {
+  def load[T <: AnyRef: Manifest](indexName: String, uuid: String, esDocumentName: String): Option[T] = {
     val req = get id uuid from indexName -> esDocumentName
     val res = client.execute(req).await
     if (res.isExists) Some(serialization.read[T](res.getSourceAsString)) else None
   }
 
-  def loadWithVersion[T: Manifest](indexName: String, uuid: String): Option[(T, Long)] = {
+  def loadWithVersion[T <: AnyRef: Manifest](indexName: String, uuid: String): Option[(T, Long)] = {
     val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
     val res = client.execute(req).await
     val maybeT = if (res.isExists) Some(serialization.read[T](res.getSourceAsString)) else None
@@ -137,7 +137,7 @@ object EsClient {
     EsClient().execute(req).await.getResponses
   }
 
-  def delete[T: Manifest](indexName: String, uuid: String, refresh: Boolean): Boolean = {
+  def delete[T <: AnyRef: Manifest](indexName: String, uuid: String, refresh: Boolean): Boolean = {
     val req = esdelete4s id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
     val res = client.execute(req).await
     res.isFound
@@ -276,32 +276,32 @@ object EsClient {
     }
   }
 
-//  import akka.stream.scaladsl._
-//
-//  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) =
-//    Flow() { implicit b =>
-//      import GraphDSL.Implicits._
-//
-//      val in = Source[BulkCompatibleDefinition].
-//      val group = Flow[BulkCompatibleDefinition].grouped(bulkSize)
-//      val bulkUpsert = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
-//      val out = Sink[BulkResponse]
-//
-//      if (balanceSize > 1) {
-//
-//        val balance = Balance[Seq[BulkCompatibleDefinition]]
-//        val merge = Merge[BulkResponse]
-//
-//        in ~> group ~> balance
-//        1 to balanceSize foreach { _ =>
-//          balance ~> bulkUpsert ~> merge
-//        }
-//        merge ~> out
-//
-//      } else {
-//        in ~> group ~> bulkUpsert ~> out
-//      }
-//
-//      (in, out)
-//    }
+  //  import akka.stream.scaladsl._
+  //
+  //  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) =
+  //    Flow() { implicit b =>
+  //      import GraphDSL.Implicits._
+  //
+  //      val in = Source[BulkCompatibleDefinition].
+  //      val group = Flow[BulkCompatibleDefinition].grouped(bulkSize)
+  //      val bulkUpsert = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
+  //      val out = Sink[BulkResponse]
+  //
+  //      if (balanceSize > 1) {
+  //
+  //        val balance = Balance[Seq[BulkCompatibleDefinition]]
+  //        val merge = Merge[BulkResponse]
+  //
+  //        in ~> group ~> balance
+  //        1 to balanceSize foreach { _ =>
+  //          balance ~> bulkUpsert ~> merge
+  //        }
+  //        merge ~> out
+  //
+  //      } else {
+  //        in ~> group ~> bulkUpsert ~> out
+  //      }
+  //
+  //      (in, out)
+  //    }
 }
