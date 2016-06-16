@@ -103,6 +103,16 @@ object EsClient {
     res.getId
   }
 
+  def simpleIndex[T: Manifest](indexName: String, t: T, refresh: Boolean, id: String): String = {
+    val json = JacksonConverter.serialize(t)
+    val res = client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id)
+      .setSource(json)
+      .setRefresh(refresh)
+      .execute()
+      .actionGet()
+    res.getId
+  }
+
   def exists(indexes: String*): Boolean = {
     client.execute {
       indexExists(indexes)
