@@ -6,21 +6,21 @@ package com.mogobiz.es
 
 import java.util
 import java.util.regex.Pattern
-import java.util.{ Calendar, Date }
+import java.util.{Calendar, Date}
 
 import com.mogobiz.json.JacksonConverter
 import com.sksamuel.elastic4s._
-import com.sksamuel.elastic4s.ElasticDsl.{ index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _ }
+import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.apache.commons.codec.binary.Base64
 import org.elasticsearch.action.ActionRequestBuilder
 import org.elasticsearch.action.bulk.{BulkRequest, BulkResponse}
-import org.elasticsearch.action.get.{ MultiGetItemResponse, GetResponse }
+import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
 import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.collect.UnmodifiableIterator
 import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.index.get.GetResult
-import org.elasticsearch.search.{ SearchHitField, SearchHits, SearchHit }
+import org.elasticsearch.search.{SearchHitField, SearchHits, SearchHit}
 import org.json4s.JsonAST.JValue
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
@@ -35,7 +35,8 @@ object EsClient {
   implicit val _ = Duration.Inf
 
   val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Cluster).build()
-  private val client: ElasticClient = ElasticClient.remote(settings, ElasticsearchClientUri(s"elasticsearch://$Host:$Port"))
+  private val client: ElasticClient =
+    ElasticClient.remote(settings, ElasticsearchClientUri(s"elasticsearch://$Host:$Port"))
 
   val credentials = Base64.encodeBase64String(s"$Username:$Password".getBytes)
 
@@ -46,13 +47,13 @@ object EsClient {
   }
 
   def secureActionRequest[T <: ActionRequestBuilder](request: T): T = {
-    if(Active)
+    if (Active)
       request.putHeader("searchguard_transport_creds", credentials)
     request
   }
 
-  def secureRequest[T <: {def build: BulkRequest}](request: T): T = {
-    if(Active)
+  def secureRequest[T <: { def build: BulkRequest }](request: T): T = {
+    if (Active)
       request.build.putHeader("searchguard_transport_creds", credentials)
     request
   }
@@ -68,12 +69,11 @@ object EsClient {
 
     val matcher = Option(pattern).map(Pattern.compile)
 
-    clusterHealthResponse.getIndices.keySet() flatMap {
-      indice =>
-        if (matcher.exists(_.matcher(indice).matches()))
-          Some(indice)
-        else
-          None
+    clusterHealthResponse.getIndices.keySet() flatMap { indice =>
+      if (matcher.exists(_.matcher(indice).matches()))
+        Some(indice)
+      else
+        None
     } toSet
   }
 
@@ -89,7 +89,7 @@ object EsClient {
   }
 
   def getUniqueIndexByAlias(alias: String): Option[String] = {
-    val aliases = secureActionRequest(client.admin.indices().prepareGetAliases(alias)).get().getAliases
+    val aliases  = secureActionRequest(client.admin.indices().prepareGetAliases(alias)).get().getAliases
     val iterator = aliases.keysIt()
     if (iterator.hasNext) Some(iterator.next())
     else None
@@ -109,7 +109,8 @@ object EsClient {
     t.dateCreated = now
     t.lastUpdated = now
     val json = JacksonConverter.serialize(t)
-    val res = secureActionRequest(client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id.getOrElse(t.uuid)))
+    val res = secureActionRequest(
+        client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id.getOrElse(t.uuid)))
       .setSource(json)
       .setRefresh(refresh)
       .execute()
@@ -119,7 +120,8 @@ object EsClient {
 
   def simpleIndex[T: Manifest](indexName: String, t: T, refresh: Boolean, id: String): String = {
     val json = JacksonConverter.serialize(t)
-    val res = client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id)
+    val res = client.client
+      .prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id)
       .setSource(json)
       .setRefresh(refresh)
       .execute()
@@ -144,8 +146,8 @@ object EsClient {
   }
 
   def loadWithVersion[T: Manifest](indexName: String, uuid: String): Option[(T, Long)] = {
-    val req = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
-    val res = client.execute(secureRequest(req)).await
+    val req    = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
+    val res    = client.execute(secureRequest(req)).await
     val maybeT = if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
     maybeT map ((_, res.getVersion))
   }
@@ -183,7 +185,11 @@ object EsClient {
     update[T](indexName, t, manifest[T].runtimeClass.getSimpleName, upsert, refresh)
   }
 
-  def update[T <: Timestamped: Manifest](indexName: String, t: T, esDocumentName: String, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped: Manifest](indexName: String,
+                                         t: T,
+                                         esDocumentName: String,
+                                         upsert: Boolean,
+                                         refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
     val js = JacksonConverter.serialize(t)
@@ -206,7 +212,10 @@ object EsClient {
     true
   }
 
-  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, util.Map[String, SearchHitField]) => T = { (hit: T, fields: util.Map[String, SearchHitField]) => hit }): Seq[T] = {
+  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, util.Map[String, SearchHitField]) => T = {
+    (hit: T, fields: util.Map[String, SearchHitField]) =>
+      hit
+  }): Seq[T] = {
     debug(req)
     val res = client.execute(secureRequest(req)).await
     res.getHits.getHits.map { hit =>
@@ -275,14 +284,14 @@ object EsClient {
   }
 
   /**
-   * send back the aggregations results
-   *
-   * @param req - request
-   * @return
-   */
+    * send back the aggregations results
+    *
+    * @param req - request
+    * @return
+    */
   def searchAgg(req: SearchDefinition): JValue = {
     debug(req)
-    val res = client.execute(secureRequest(req)).await
+    val res     = client.execute(secureRequest(req)).await
     val resJson = parse(res.toString)
     resJson \ "aggregations"
   }
@@ -304,15 +313,15 @@ object EsClient {
     Flow() { implicit b =>
       import FlowGraphImplicits._
 
-      val in = UndefinedSource[BulkCompatibleDefinition]
-      val group = Flow[BulkCompatibleDefinition].grouped(bulkSize)
+      val in         = UndefinedSource[BulkCompatibleDefinition]
+      val group      = Flow[BulkCompatibleDefinition].grouped(bulkSize)
       val bulkUpsert = Flow[Seq[BulkCompatibleDefinition]].map(bulk)
-      val out = UndefinedSink[BulkResponse]
+      val out        = UndefinedSink[BulkResponse]
 
       if (balanceSize > 1) {
 
         val balance = Balance[Seq[BulkCompatibleDefinition]]
-        val merge = Merge[BulkResponse]
+        val merge   = Merge[BulkResponse]
 
         in ~> group ~> balance
         1 to balanceSize foreach { _ =>
