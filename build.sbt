@@ -1,3 +1,2 @@
 name := "mogobiz-es"
 
-scalariformSettings
