@@ -14,9 +14,10 @@ import com.sksamuel.elastic4s.ElasticDsl.{ index => esindex4s, update => esupdat
 import com.sksamuel.elastic4s.source.DocumentSource
 import org.apache.commons.codec.binary.Base64
 import org.elasticsearch.action.ActionRequestBuilder
-import org.elasticsearch.action.bulk.{BulkRequest, BulkResponse}
+import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.get.{ MultiGetItemResponse, GetResponse }
 import org.elasticsearch.action.search.MultiSearchResponse
+import org.elasticsearch.common.ContextAndHeaderHolder
 import org.elasticsearch.common.collect.UnmodifiableIterator
 import org.elasticsearch.common.settings.ImmutableSettings
 import org.elasticsearch.index.get.GetResult
@@ -45,14 +46,14 @@ object EsClient {
     client
   }
 
-  def secureActionRequest[T <: ActionRequestBuilder](request: T): T = {
-    if(Active)
+  def secureActionRequest[T <: ActionRequestBuilder[_, _, _, _]](request: T): T = {
+    if (Active)
       request.putHeader("searchguard_transport_creds", credentials)
     request
   }
 
-  def secureRequest[T <: {def build: BulkRequest}](request: T): T = {
-    if(Active)
+  def secureRequest[T <: AnyRef { def build: ContextAndHeaderHolder }](request: T): T = {
+    if (Active)
       request.build.putHeader("searchguard_transport_creds", credentials)
     request
   }
@@ -129,7 +130,7 @@ object EsClient {
 
   def exists(indexes: String*): Boolean = {
     client.execute {
-      secureRequest(indexExists(indexes))
+      indexExists(indexes) //FIXME
     }.await.isExists
   }
 
