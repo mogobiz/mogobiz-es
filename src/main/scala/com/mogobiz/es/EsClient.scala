@@ -129,9 +129,10 @@ object EsClient {
   }
 
   def exists(indexes: String*): Boolean = {
-    client.execute {
-      indexExists(indexes) //FIXME
-    }.await.isExists
+    val prepare = client.admin.indices.prepareExists(indexes: _*)
+    if (Active)
+      prepare.putHeader("searchguard_transport_creds", credentials)
+    prepare.get().isExists
   }
 
   def load[T: Manifest](indexName: String, uuid: String): Option[T] = {
