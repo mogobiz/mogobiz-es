@@ -132,9 +132,7 @@ object EsClient {
 
   def exists(indexes: String*): Boolean = {
     val prepare = client.admin.indices.prepareExists(indexes: _*)
-    if (Active)
-      prepare.putHeader("searchguard_transport_creds", credentials)
-    prepare.get().isExists
+    secureActionRequest(prepare).get().isExists
   }
 
   def load[T: Manifest](indexName: String, uuid: String): Option[T] = {
