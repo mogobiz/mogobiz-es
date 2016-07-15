@@ -15,7 +15,7 @@ import com.sksamuel.elastic4s.source.DocumentSource
 import org.apache.commons.codec.binary.Base64
 import org.elasticsearch.action.ActionRequestBuilder
 import org.elasticsearch.action.bulk.BulkResponse
-import org.elasticsearch.action.get.{ MultiGetItemResponse, GetResponse }
+import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
 import org.elasticsearch.action.search.MultiSearchResponse
 import org.elasticsearch.common.ContextAndHeaderHolder
 import org.elasticsearch.common.collect.UnmodifiableIterator
