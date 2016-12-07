@@ -162,7 +162,11 @@ object EsClient {
   }
 
   def delete[T: Manifest](indexName: String, uuid: String, refresh: Boolean): Boolean = {
-    val req = esdelete4s id uuid from indexName -> manifest[T].runtimeClass.getSimpleName refresh refresh
+    delete(indexName, uuid, manifest[T].runtimeClass.getSimpleName, refresh)
+  }
+
+  def delete[T: Manifest](indexName: String, uuid: String, esDocumentName: String, refresh: Boolean): Boolean = {
+    val req = esdelete4s id uuid from indexName -> esDocumentName refresh refresh
     val res = client.execute(secureRequest(req)).await
     res.isFound
   }
