@@ -4,60 +4,42 @@
 
 package com.mogobiz.es
 
-import java.util
 import java.util.regex.Pattern
 import java.util.{Calendar, Date}
 
+import cats.Show
+import com.mogobiz.es.Settings.ElasticSearch._
 import com.mogobiz.json.JacksonConverter
-import com.sksamuel.elastic4s._
-import com.sksamuel.elastic4s.ElasticDsl.{index => esindex4s, update => esupdate4s, delete => esdelete4s, bulk => esbulk4s, _}
-import com.sksamuel.elastic4s.source.DocumentSource
-import org.apache.commons.codec.binary.Base64
-import org.elasticsearch.action.ActionRequestBuilder
-import org.elasticsearch.action.bulk.BulkResponse
-import org.elasticsearch.action.get.{MultiGetItemResponse, GetResponse}
-import org.elasticsearch.action.search.MultiSearchResponse
-import org.elasticsearch.common.ContextAndHeaderHolder
-import org.elasticsearch.common.collect.UnmodifiableIterator
-import org.elasticsearch.common.settings.ImmutableSettings
-import org.elasticsearch.index.get.GetResult
-import org.elasticsearch.search.{SearchHitField, SearchHits, SearchHit}
-import org.json4s.JsonAST.JValue
+import com.sksamuel.elastic4s.ElasticsearchClientUri
+import com.sksamuel.elastic4s.bulk.BulkCompatibleDefinition
+import com.sksamuel.elastic4s.delete.DeleteByIdDefinition
+import com.sksamuel.elastic4s.get.{GetDefinition, MultiGetDefinition}
+import com.sksamuel.elastic4s.http.ElasticDsl.{bulk => esbulk4s, delete => esdelete4s, update => esupdate4s, _}
+import com.sksamuel.elastic4s.http.bulk.BulkResponse
+import com.sksamuel.elastic4s.http.get.GetResponse
+import com.sksamuel.elastic4s.http.search.{SearchHit, SearchHits, SearchImplicits, SearchResponse}
+import com.sksamuel.elastic4s.http.update.UpdateImplicits.UpdateHttpExecutable
+import com.sksamuel.elastic4s.http.{HttpClient, HttpExecutable}
+import com.sksamuel.elastic4s.searches.SearchDefinition
+import com.sksamuel.elastic4s.update.UpdateDefinition
+import com.typesafe.scalalogging.LazyLogging
+import org.elasticsearch.action.support.WriteRequest.RefreshPolicy
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
-import org.slf4j.LoggerFactory
-import scala.collection.JavaConversions._
+
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 
-import Settings.ElasticSearch._
-import Settings.ElasticSearch.Searchguard._
+object EsClient extends SearchImplicits with LazyLogging {
+  implicit val _         = Duration.Inf
+  val client: HttpClient = HttpClient(ElasticsearchClientUri(FullUrl))
 
-object EsClient {
-  implicit val _ = Duration.Inf
-
-  val settings = ImmutableSettings.settingsBuilder().put("cluster.name", Cluster).build()
-  private val client: ElasticClient =
-    ElasticClient.remote(settings, ElasticsearchClientUri(s"elasticsearch://$Host:$Port"))
-
-  val credentials = Base64.encodeBase64String(s"$Username:$Password".getBytes)
-
-  val MAX_SIZE = Integer.MAX_VALUE / 2
-
-  def apply(): ElasticClient = {
+  def apply(): HttpClient = {
     client
   }
 
-  def secureActionRequest[T <: ActionRequestBuilder[_, _, _, _]](request: T): T = {
-    if (Active)
-      request.putHeader("searchguard_transport_creds", credentials)
-    request
-  }
-
-  def secureRequest[T <: AnyRef { def build: ContextAndHeaderHolder }](request: T): T = {
-    if (Active)
-      request.build.putHeader("searchguard_transport_creds", credentials)
-    request
-  }
+  val MaxSize: Int = Int.MaxValue / 2
 
   type Timestamped = {
     val uuid: String
@@ -66,99 +48,85 @@ object EsClient {
   }
 
   def listIndices(pattern: String = null): Set[String] = {
-    val clusterHealthResponse = secureActionRequest(client.admin.cluster().prepareHealth()).get()
-
     val matcher = Option(pattern).map(Pattern.compile)
-
-    clusterHealthResponse.getIndices.keySet() flatMap { indice =>
-      if (matcher.exists(_.matcher(indice).matches()))
-        Some(indice)
-      else
-        None
-    } toSet
+    client
+      .execute(catIndices())
+      .await
+      .filter(index => matcher.exists(_.matcher(index.index).matches()))
+      .map(_.index)
+      .toSet
   }
 
-  def getIndexByAlias(alias: String): List[String] = {
-    val aliases = secureActionRequest(client.admin.indices().prepareGetAliases(alias)).get().getAliases
-    def extractListAlias(iterator: UnmodifiableIterator[String]): List[String] = {
-      if (!iterator.hasNext) Nil
-      else {
-        iterator.next() :: extractListAlias(iterator)
-      }
-    }
-    extractListAlias(aliases.keysIt())
-  }
+  def getIndexByAlias(alias: String): List[String] = client.execute(getAlias(alias)).await.keys.toList
 
-  def getUniqueIndexByAlias(alias: String): Option[String] = {
-    val aliases  = secureActionRequest(client.admin.indices().prepareGetAliases(alias)).get().getAliases
-    val iterator = aliases.keysIt()
-    if (iterator.hasNext) Some(iterator.next())
-    else None
-  }
+  def getUniqueIndexByAlias(alias: String): Option[String] = getIndexByAlias(alias).headOption
 
-  def indexLowercase[T: Manifest](store: String, t: T, refresh: Boolean = false): String = {
-    val js = JacksonConverter.serialize(t)
-    val req = esindex4s into (store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc new DocumentSource {
-      override val json: String = js
-    } refresh refresh
-    val res = client.execute(secureRequest(req)).await
-    res.getId
+  def indexLowercase[T <: AnyRef: Manifest](store: String, t: T, refresh: Boolean = false): String = {
+    val js        = JacksonConverter.serialize(t)
+    val doRefresh = if (refresh) RefreshPolicy.IMMEDIATE else RefreshPolicy.NONE
+    client
+      .execute(indexInto(store, manifest[T].runtimeClass.getSimpleName.toLowerCase) doc js refresh doRefresh)
+      .await
+      .id
   }
 
   def index[T <: Timestamped: Manifest](indexName: String, t: T, refresh: Boolean, id: Option[String] = None): String = {
     val now = Calendar.getInstance().getTime
     t.dateCreated = now
     t.lastUpdated = now
-    val json = JacksonConverter.serialize(t)
-    val res = secureActionRequest(
-        client.client.prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id.getOrElse(t.uuid)))
-      .setSource(json)
-      .setRefresh(refresh)
-      .execute()
-      .actionGet()
-    res.getId
+    val json      = JacksonConverter.serialize(t)
+    val doRefresh = if (refresh) RefreshPolicy.IMMEDIATE else RefreshPolicy.NONE
+    client
+      .execute(
+          indexInto(indexName, manifest[T].runtimeClass.getSimpleName)
+            .withId(id.getOrElse(t.uuid)) doc json refresh doRefresh
+      )
+      .await
+      .id
   }
 
-  def simpleIndex[T: Manifest](indexName: String, t: T, refresh: Boolean, id: String): String = {
-    val json = JacksonConverter.serialize(t)
-    val res = client.client
-      .prepareIndex(indexName, manifest[T].runtimeClass.getSimpleName, id)
-      .setSource(json)
-      .setRefresh(refresh)
-      .execute()
-      .actionGet()
-    res.getId
+  def simpleIndex[T <: AnyRef: Manifest](indexName: String, t: T, refresh: Boolean, id: String): String = {
+    val json      = JacksonConverter.serialize(t)
+    val doRefresh = if (refresh) RefreshPolicy.IMMEDIATE else RefreshPolicy.NONE
+    client
+      .execute(
+          indexInto(indexName, manifest[T].runtimeClass.getSimpleName).withId(id) doc json refresh doRefresh
+      )
+      .await
+      .id
   }
 
   def exists(indexes: String*): Boolean = {
-    val prepare = client.admin.indices.prepareExists(indexes: _*)
-    secureActionRequest(prepare).get().isExists
+    Future
+      .sequence(indexes.map { index =>
+        client.execute(indexExists(index))
+      })
+      .await
+      .forall(response => response.exists)
   }
 
   def load[T: Manifest](indexName: String, uuid: String): Option[T] = {
     load[T](indexName, uuid, manifest[T].runtimeClass.getSimpleName)
   }
 
-  def load[T: Manifest](indexName: String, uuid: String, esDocumentName: String): Option[T] = {
-    val req = get id uuid from indexName -> esDocumentName
-    val res = client.execute(secureRequest(req)).await
-    if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
+  def load[T: Manifest](indexName: String, uuid: String, esTypeName: String): Option[T] = {
+    val res = client.execute(get(uuid) from indexName -> esTypeName).await
+    if (res.found) Some(JacksonConverter.deserialize[T](res.sourceAsString)) else None
   }
 
   def loadWithVersion[T: Manifest](indexName: String, uuid: String): Option[(T, Long)] = {
-    val req    = get id uuid from indexName -> manifest[T].runtimeClass.getSimpleName
-    val res    = client.execute(secureRequest(req)).await
-    val maybeT = if (res.isExists) Some(JacksonConverter.deserialize[T](res.getSourceAsString)) else None
-    maybeT map ((_, res.getVersion))
+    val res    = client.execute(get(uuid) from indexName -> manifest[T].runtimeClass.getSimpleName).await
+    val maybeT = if (res.found) Some(JacksonConverter.deserialize[T](res.sourceAsString)) else None
+    maybeT map ((_, res.version))
   }
 
   def loadRaw(req: GetDefinition): Option[GetResponse] = {
-    val res = client.execute(secureRequest(req)).await
-    if (res.isExists) Some(res) else None
+    val res: GetResponse = client.execute(req).await
+    if (res.found) Some(res) else None
   }
 
-  def loadRaw(req: MultiGetDefinition): Array[MultiGetItemResponse] = {
-    client.execute(req).await.getResponses
+  def loadRaw(req: MultiGetDefinition): Seq[GetResponse] = {
+    client.execute(req).await.items
   }
 
   def delete[T: Manifest](indexName: String, uuid: String, refresh: Boolean): Boolean = {
@@ -166,28 +134,15 @@ object EsClient {
   }
 
   def delete[T: Manifest](indexName: String, uuid: String, esDocumentName: String, refresh: Boolean): Boolean = {
-    val req = esdelete4s id uuid from indexName -> esDocumentName refresh refresh
-    val res = client.execute(secureRequest(req)).await
-    res.isFound
+    val doRefresh = if (refresh) RefreshPolicy.IMMEDIATE else RefreshPolicy.NONE
+    val req       = esdelete4s(uuid) from indexName -> esDocumentName refresh doRefresh
+    client.execute(esdelete4s(uuid) from indexName -> esDocumentName refresh doRefresh).await.found
   }
 
-  def updateRaw(req: UpdateDefinition): GetResult = {
-    client.execute(secureRequest(req)).await.getGetResult
-  }
+  def bulk(requests: Seq[BulkCompatibleDefinition]): BulkResponse = client.execute(esbulk4s(requests: _*)).await
 
-  def deleteRaw(req: DeleteByIdDefinition): Unit = {
-    client.execute(secureRequest(req))
-  }
-
-  def bulk(requests: Seq[BulkCompatibleDefinition]): BulkResponse = {
-    val req = esbulk4s(requests: _*)
-    val res = client.execute(secureRequest(req)).await
-    res
-  }
-
-  def update[T <: Timestamped: Manifest](indexName: String, t: T, upsert: Boolean, refresh: Boolean): Boolean = {
+  def update[T <: Timestamped: Manifest](indexName: String, t: T, upsert: Boolean, refresh: Boolean): Boolean =
     update[T](indexName, t, manifest[T].runtimeClass.getSimpleName, upsert, refresh)
-  }
 
   def update[T <: Timestamped: Manifest](indexName: String,
                                          t: T,
@@ -196,61 +151,64 @@ object EsClient {
                                          refresh: Boolean): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
-    val js = JacksonConverter.serialize(t)
-    val req = esupdate4s id t.uuid in indexName -> esDocumentName refresh refresh doc new DocumentSource {
-      override def json: String = js
-    }
-    req.docAsUpsert(upsert)
-    val res = client.execute(secureRequest(req)).await
-    res.isCreated || res.getVersion > 1
+    val js        = JacksonConverter.serialize(t)
+    val doRefresh = if (refresh) RefreshPolicy.IMMEDIATE else RefreshPolicy.NONE
+    val req       = esupdate4s(t.uuid) in indexName -> esDocumentName refresh doRefresh doc js docAsUpsert (upsert)
+    client.execute(req).await.result
+    true
   }
 
   def update[T <: Timestamped: Manifest](indexName: String, t: T, version: Long): Boolean = {
     val now = Calendar.getInstance().getTime
     t.lastUpdated = now
-    val js = JacksonConverter.serialize(t)
-    val req = esupdate4s id t.uuid in indexName -> manifest[T].runtimeClass.getSimpleName version version doc new DocumentSource {
-      override def json: String = js
-    }
-    client.execute(secureRequest(req)).await
+    val js                    = JacksonConverter.serialize(t)
+    val req: UpdateDefinition = esupdate4s(t.uuid) in indexName -> manifest[T].runtimeClass.getSimpleName version version doc js
+    client.execute(req).await
     true
   }
 
-  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, util.Map[String, SearchHitField]) => T = {
-    (hit: T, fields: util.Map[String, SearchHitField]) =>
+  def updateRaw(req: UpdateDefinition): String = {
+    submit(req).await.result
+  }
+
+  def deleteRaw(req: DeleteByIdDefinition): String = {
+    apply().execute(req).await.result
+  }
+
+  def searchAll[T: Manifest](req: SearchDefinition, fieldsDeserialize: (T, Map[String, Any]) => T = {
+    (hit: T, fields: Map[String, Any]) =>
       hit
   }): Seq[T] = {
     debug(req)
-    val res = client.execute(secureRequest(req)).await
-    res.getHits.getHits.map { hit =>
+    val res: SearchResponse = client.execute(req).await
+    res.hits.hits.map { (hit: SearchHit) =>
       {
-        fieldsDeserialize(JacksonConverter.deserialize[T](hit.getSourceAsString), hit.fields())
+        fieldsDeserialize(JacksonConverter.deserialize[T](hit.sourceAsString), hit.fields)
       }
     }
   }
 
   def search[T: Manifest](req: SearchDefinition): Option[T] = {
     debug(req)
-    val res = client.execute(secureRequest(req)).await
-    if (res.getHits.getTotalHits == 0)
+    val res = client.execute(req).await
+    if (res.hits.total == 0)
       None
     else
-      Some(JacksonConverter.deserialize[T](res.getHits.getHits()(0).getSourceAsString))
+      Some(JacksonConverter.deserialize[T](res.hits.hits(0).sourceAsString))
   }
 
   def searchAllRaw(req: SearchDefinition): SearchHits = {
-    debug(req)
-    val res = client.execute(secureRequest(req)).await
-    res.getHits
+    submit(req).await.hits
   }
 
-  def searchRaw(req: SearchDefinition): Option[SearchHit] = {
-    debug(req)
-    val res = client.execute(secureRequest(req)).await
-    if (res.getHits.getTotalHits == 0)
+  def searchRaw(req: SearchDefinition): Option[JValue] = {
+    val res = submit(req).await
+    if (res.totalHits == 0)
       None
-    else
-      Some(res.getHits.getHits()(0))
+    else {
+      Some(parse(res.hits.hits.head.sourceAsString))
+    }
+
   }
 
   def esType[T: Manifest]: String = {
@@ -258,31 +216,27 @@ object EsClient {
     rt.getSimpleName
   }
 
-  def multiSearchRaw(req: List[SearchDefinition]): Array[Option[SearchHits]] = {
-    req.foreach(debug)
-    val multiSearchResponse: MultiSearchResponse = client.execute(secureRequest(multi(req: _*))).await
-    for (resp <- multiSearchResponse.getResponses) yield {
-      if (resp.isFailure)
+  def multiSearchRaw(reqs: List[SearchDefinition]): Seq[Option[SearchHits]] = {
+    reqs.foreach(req => debug(req))
+    val multiSearchResponse = client.execute(multi(reqs)).await
+    for (resp <- multiSearchResponse.responses) yield {
+      if (resp.isEmpty)
         None
       else
-        Some(resp.getResponse.getHits)
+        Some(resp.hits)
     }
   }
 
-  def multiSearchAgg(req: List[SearchDefinition]): JValue = {
-    req.foreach(debug)
-    val multiSearchResponse: MultiSearchResponse = client.execute(secureRequest(multi(req: _*))).await
-    val esResult = for (resp <- multiSearchResponse.getResponses) yield {
-      if (resp.isFailure) None
-      else {
-        val resJson = parse(resp.getResponse.toString)
-        Some(resJson \ "aggregations")
-      }
+  def multiSearchAgg(reqs: List[SearchDefinition]): JValue = {
+    reqs.foreach(req => debug(req))
+    val multiSearchResponse = client.execute(multi(reqs)).await.responses
+    val esResult = for (resp <- multiSearchResponse) yield {
+      parse(resp.aggregationsAsString)
     }
-    join(esResult.toList.flatten)
+    join(esResult)
   }
 
-  private def join(list: List[JValue]): JValue = {
+  private def join(list: Seq[JValue]): JValue = {
     if (list.isEmpty) JNothing
     else list.head merge join(list.tail)
   }
@@ -295,25 +249,38 @@ object EsClient {
     */
   def searchAgg(req: SearchDefinition): JValue = {
     debug(req)
-    val res     = client.execute(secureRequest(req)).await
+    val res     = submit(req).await
     val resJson = parse(res.toString)
     resJson \ "aggregations"
   }
 
+  def makeIndex(index: String, typ: String): String = index + "_" + typ
+
+  def delIndex(index: String, typ: String) = {
+    client.execute(deleteIndex(makeIndex(index, typ)))
+  }
+
+  def delIndex(indexAndTyp: (String, String)) = {
+    client.execute(deleteIndex(makeIndex(indexAndTyp._1, indexAndTyp._2)))
+  }
+
   import Settings._
-  import com.typesafe.scalalogging.Logger
 
-  private val logger = Logger(LoggerFactory.getLogger("esClient"))
-
-  private def debug(req: SearchDefinition) {
+  def debug[T](req: T)(implicit ev: Show[T]) = {
     if (ElasticSearch.EsDebug) {
-      logger.info(req._builder.toString)
+      logger.info(client.show(req))
     }
+  }
+
+  def submit[T, U](req: T)(implicit ev1: HttpExecutable[T, U], ev2: Show[T]): Future[U] = {
+    debug(req)
+    apply().execute(req)
   }
 
   import akka.stream.scaladsl._
 
-  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize, balanceSize: Int = 2) =
+  def bulkBalancedFlow(bulkSize: Int = Settings.ElasticSearch.bulkSize,
+                       balanceSize: Int = 2): Flow[BulkCompatibleDefinition, BulkResponse] =
     Flow() { implicit b =>
       import FlowGraphImplicits._
 
@@ -339,4 +306,5 @@ object EsClient {
 
       (in, out)
     }
+
 }
